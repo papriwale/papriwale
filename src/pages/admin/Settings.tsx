@@ -3,9 +3,9 @@ import { useState, useEffect, useRef } from "react";
 import { Shield, Bell, Save, CheckCircle2, Plus, Trash2, Users, Image, X, Edit2 } from "lucide-react";
 import { apiFetch } from "../../lib/apiFetch";
 
-const MODULES = ["POS Billing", "Orders", "Inventory", "Financial Reports", "Settings"];
+const MODULES = ["POS Billing", "Orders", "Inventory", "Financial Reports", "Employees", "Settings"];
 const ACCESS_LEVELS = ["Full Access", "Read-Only", "Hidden"];
-const DEFAULT_PERMS = { "POS Billing": "Full Access", Orders: "Read-Only", Inventory: "Hidden", "Financial Reports": "Hidden", Settings: "Hidden" };
+const DEFAULT_PERMS = { "POS Billing": "Full Access", Orders: "Read-Only", Inventory: "Hidden", "Financial Reports": "Hidden", Employees: "Hidden", Settings: "Hidden" };
 
 type PermMatrix = Record<string, Record<string, string>>;
 

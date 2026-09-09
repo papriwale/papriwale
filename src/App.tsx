@@ -66,62 +66,48 @@ function RequireMobileAuth({ children }: { children: React.ReactElement }) {
   return <Navigate to="/login" replace />;
 }
 
+const MODULE_ROUTE_MAP: [string, string][] = [
+  ["POS Billing",       "/admin/pos"],
+  ["Orders",            "/admin/orders"],
+  ["Inventory",         "/admin/inventory"],
+  ["Financial Reports", "/admin/dealer"],
+  ["Employees",         "/admin/employee"],
+  ["Settings",          "/admin/settings"],
+];
+
+function firstAllowedRoute(perms: Record<string, string>): string {
+  const found = MODULE_ROUTE_MAP.find(([mod]) => (perms[mod] ?? "Hidden") !== "Hidden");
+  return found ? found[1] : "/admin/login";
+}
+
 function RoleHomeRedirect() {
   const { status, session } = useAuthSession();
   if (status === "loading") return null;
-  const role = session?.role || "";
-  if (role === "Admin") return <Navigate to="/admin/dashboard" replace />;
-  const rolePerms: Record<string, string> = session?.permissions || {};
-  const moduleRouteMap: [string, string][] = [
-    ["POS Billing", "/admin/pos"],
-    ["Orders", "/admin/orders"],
-    ["Inventory", "/admin/inventory"],
-    ["Financial Reports", "/admin/dealer"],
-    ["Settings", "/admin/settings"],
-  ];
-  const first = moduleRouteMap.find(([mod]) => (rolePerms[mod] ?? "Hidden") !== "Hidden");
-  return <Navigate to={first ? first[1] : "/admin/pos"} replace />;
+  if (!session) return <Navigate to="/admin/login" replace />;
+  if (session.role === "Admin") return <Navigate to="/admin/dashboard" replace />;
+  return <Navigate to={firstAllowedRoute(session.permissions || {})} replace />;
 }
 
 function PermissionGuard({ module, children }: { module: string; children: React.ReactElement }) {
   const location = useLocation();
   const { status, session } = useAuthSession();
   if (status === "loading") return null;
-  const role = session?.role || "";
-  if (role === "Admin") return children;
   if (!session) return <Navigate to="/admin/login" replace />;
+  if (session.role === "Admin") return children;
 
+  // Admin-only pages always redirect employees to their first allowed route
   if (module === "__admin_only__") {
-    const rolePerms: Record<string, string> = session?.permissions || {};
-    const moduleRouteMap: [string, string][] = [
-      ["POS Billing", "/admin/pos"],
-      ["Orders", "/admin/orders"],
-      ["Inventory", "/admin/inventory"],
-      ["Financial Reports", "/admin/dealer"],
-      ["Settings", "/admin/settings"],
-    ];
-    const first = moduleRouteMap.find(([mod]) => (rolePerms[mod] ?? "Hidden") !== "Hidden");
-    return <Navigate to={first ? first[1] : "/admin/pos"} replace />;
+    return <Navigate to={firstAllowedRoute(session.permissions || {})} replace />;
   }
 
-  const rolePerms: Record<string, string> = session?.permissions || {};
-  const access = rolePerms[module] ?? "Hidden";
-
+  const access = (session.permissions || {})[module] ?? "Hidden";
   if (access === "Hidden") {
     fetch("/api/auth/forbidden-alert", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ path: location.pathname, role }),
+      body: JSON.stringify({ path: location.pathname, role: session.role }),
     }).catch(() => {});
-    const moduleRouteMap: [string, string][] = [
-      ["POS Billing", "/admin/pos"],
-      ["Orders", "/admin/orders"],
-      ["Inventory", "/admin/inventory"],
-      ["Financial Reports", "/admin/dealer"],
-      ["Settings", "/admin/settings"],
-    ];
-    const first = moduleRouteMap.find(([mod]) => (rolePerms[mod] ?? "Hidden") !== "Hidden");
-    return <Navigate to={first ? first[1] : "/admin/pos"} replace />;
+    return <Navigate to={firstAllowedRoute(session.permissions || {})} replace />;
   }
 
   return children;

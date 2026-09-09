@@ -210,9 +210,9 @@ export async function roleAuthMiddleware(req: Request, res: Response, next: Next
 
 
 
-  const permissions: Record<string, Record<string, string>> = (db.settings as any)?.permissions?.[role] || {};
+  const rolePerms: Record<string, string> = (db.settings as any)?.permissions?.[role] || {};
   const pathModule = deriveModule(req.path, req.method);
-  const access = (permissions as any)[pathModule] ?? "Hidden";
+  const access = rolePerms[pathModule] ?? "Hidden";
 
   // Employees can always read their own deleted bills (server scopes by employeeId)
   if (req.method === "GET" && req.path === "/deleted-bills") return next();

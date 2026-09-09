@@ -20,7 +20,7 @@ export async function apiFetch(input: RequestInfo, init: RequestInit = {}): Prom
 
   let response: Response;
   try {
-    response = await fetch(input, { ...init, headers, credentials: "same-origin" });
+    response = await fetch(input, { ...init, headers, credentials: "same-origin", cache: "no-store" });
   } catch {
     throw new Error("Network error — please check your connection.");
   }

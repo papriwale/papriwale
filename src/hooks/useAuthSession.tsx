@@ -27,7 +27,7 @@ function hasStoredSessionHint() {
 
 async function fetchSession(): Promise<ServerAuthSession | null> {
   try {
-    const response = await fetch("/api/auth/me", { credentials: "same-origin" });
+    const response = await fetch("/api/auth/me", { credentials: "same-origin", cache: "no-store" });
     if (!response.ok) return null;
     const data = await response.json();
     if (!data?.role) return null;

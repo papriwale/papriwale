@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Search, Plus, Calendar, Trash2, X, Lock, Clock, Printer, Eye, EyeOff, Pencil } from "lucide-react";
+import { Search, Plus, Calendar, Trash2, X, Lock, Clock, Printer, Pencil, Eye, EyeOff } from "lucide-react";
 import { apiFetch } from "../../lib/apiFetch";
 
 const today = new Date().toISOString().split("T")[0];
@@ -15,15 +15,6 @@ function getNextSalaryDate(joiningDate: string, salaryType: string): string {
     return next.toLocaleDateString();
   }
   return "Daily";
-}
-
-function deriveEmployeePassword(emp: any): string {
-  const rawName = String(emp?.full_name || emp?.name || "").trim();
-  const firstName = rawName.split(/\s+/)[0] || "Emp";
-  const loginId = String(emp?.login_id || "").trim();
-  const suffix = loginId.match(/(\d+)$/)?.[1] || emp?.id?.match(/(\d+)$/)?.[1] || "";
-  if (!suffix) return "—";
-  return `${firstName}@${suffix}`;
 }
 
 export default function AdminEmployee() {
@@ -47,11 +38,18 @@ export default function AdminEmployee() {
   const [reportMonth, setReportMonth] = useState(new Date().toISOString().slice(0, 7));
   const [reportData, setReportData] = useState<any[]>([]);
 
-  const [showPhoneMap, setShowPhoneMap] = useState<Record<string, boolean>>({});
-  const togglePhone = (id: string) => setShowPhoneMap(prev => ({ ...prev, [id]: !prev[id] }));
   const [createdCreds, setCreatedCreds] = useState<{ login_id: string; login_password: string; name: string } | null>(null);
   const [editEmp, setEditEmp] = useState<any | null>(null);
   const [editError, setEditError] = useState("");
+  const [editPasswordInput, setEditPasswordInput] = useState("");
+  const [showPassMap, setShowPassMap] = useState<Record<string, boolean>>({});
+
+  function deriveEmployeePassword(emp: any): string {
+    const loginId = emp.login_id || "";
+    const empNum = loginId.replace(/^EMP/i, "");
+    const firstName = (emp.full_name || emp.name || "").trim().split(" ")[0] || "Emp";
+    return `${firstName}@${empNum}`;
+  }
 
   const fetchEmployees = () =>
     apiFetch("/api/employees").then(r => r.json()).then(d => setEmployees(Array.isArray(d) ? d : []));
@@ -203,13 +201,15 @@ export default function AdminEmployee() {
                       <td className="py-3 px-4 font-bold text-gray-800">{emp.full_name || emp.name}</td>
                       <td className="py-3 px-4"><span className="bg-gray-100 px-2 py-1 rounded text-xs">{emp.designation_tag}</span></td>
                       <td className="py-3 px-4 font-mono text-xs font-bold text-maroon">
-                        {showPhoneMap[emp.id] ? (emp.login_id || "—") : "••••••"}
+                        {emp.login_id || "—"}
                       </td>
                       <td className="py-3 px-4">
                         <div className="flex items-center gap-2">
-                          <span className="font-mono text-xs">{showPhoneMap[emp.id] ? deriveEmployeePassword(emp) : "••••••••••"}</span>
-                          <button onClick={() => togglePhone(emp.id)} className="text-gray-400 hover:text-maroon">
-                            {showPhoneMap[emp.id] ? <EyeOff size={13} /> : <Eye size={13} />}
+                          <span className="font-mono text-xs text-gray-800">
+                            {showPassMap[emp.id] ? deriveEmployeePassword(emp) : "••••••••"}
+                          </span>
+                          <button onClick={() => setShowPassMap(p => ({ ...p, [emp.id]: !p[emp.id] }))} className="text-gray-400 hover:text-gray-600">
+                            {showPassMap[emp.id] ? <EyeOff size={14} /> : <Eye size={14} />}
                           </button>
                         </div>
                       </td>
@@ -218,7 +218,7 @@ export default function AdminEmployee() {
                       <td className="py-3 px-4 text-gray-500">{emp.joining_date}</td>
                       <td className="py-3 px-4 text-xs font-semibold text-maroon">{getNextSalaryDate(emp.joining_date, emp.salary_type_flag)}</td>
                       <td className="py-3 px-4 text-right flex items-center justify-end gap-1">
-                        <button onClick={() => { setEditEmp({ ...emp, full_name: emp.full_name || emp.name || "" }); setEditError(""); }} className="text-maroon hover:bg-maroon/10 p-1.5 rounded" title="Edit Employee"><Pencil size={16} /></button>
+                        <button onClick={() => { setEditEmp({ ...emp, full_name: emp.full_name || emp.name || "" }); setEditError(""); setEditPasswordInput(deriveEmployeePassword(emp)); }} className="text-maroon hover:bg-maroon/10 p-1.5 rounded" title="Edit Employee"><Pencil size={16} /></button>
                         <button onClick={() => handleDeleteEmployee(emp.id)} className="text-red-600 hover:bg-red-50 p-1.5 rounded"><Trash2 size={16} /></button>
                       </td>
                     </tr>
@@ -498,29 +498,31 @@ export default function AdminEmployee() {
                   className="w-full border border-gray-300 rounded px-3 py-2 text-sm mt-1 focus:outline-none focus:border-maroon font-mono" />
               </div>
               <div>
-                <label className="text-xs font-semibold text-gray-600 uppercase">Password</label>
-                <input type="text" value={editEmp.login_password || ""} onChange={e => setEditEmp((p: any) => ({ ...p, login_password: e.target.value }))}
+                <label className="text-xs font-semibold text-gray-600 uppercase">Password <span className="text-gray-400 font-normal">(change or keep current)</span></label>
+                <input type="text" value={editPasswordInput} onChange={e => setEditPasswordInput(e.target.value)}
+                  placeholder="Enter new password to change"
                   className="w-full border border-gray-300 rounded px-3 py-2 text-sm mt-1 focus:outline-none focus:border-maroon font-mono" />
               </div>
               {editError && <p className="text-red-500 text-sm">{editError}</p>}
               <button onClick={async () => {
                 if (!editEmp.full_name.trim()) { setEditError("Full name is required."); return; }
                 if (editEmp.phone_number && !/^\d{10}$/.test(editEmp.phone_number)) { setEditError("Phone must be 10 digits."); return; }
-                if (!editEmp.login_id?.trim() || !editEmp.login_password?.trim()) { setEditError("Login ID and Password are required."); return; }
+                if (!editEmp.login_id?.trim()) { setEditError("Login ID is required."); return; }
+                const payload: any = {
+                  name: editEmp.full_name.trim(),
+                  full_name: editEmp.full_name.trim(),
+                  designation_tag: editEmp.designation_tag,
+                  phone_number: editEmp.phone_number || null,
+                  salary_type_flag: editEmp.salary_type_flag,
+                  base_compensation_rate: Number(editEmp.base_compensation_rate),
+                  joining_date: editEmp.joining_date,
+                  last_working_date: editEmp.last_working_date || null,
+                  login_id: editEmp.login_id.trim(),
+                };
+                if (editPasswordInput.trim()) payload.login_password = editPasswordInput.trim();
                 const res = await apiFetch(`/api/employees/${editEmp.id}`, {
                   method: "PATCH", headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    name: editEmp.full_name.trim(),
-                    full_name: editEmp.full_name.trim(),
-                    designation_tag: editEmp.designation_tag,
-                    phone_number: editEmp.phone_number || null,
-                    salary_type_flag: editEmp.salary_type_flag,
-                    base_compensation_rate: Number(editEmp.base_compensation_rate),
-                    joining_date: editEmp.joining_date,
-                    last_working_date: editEmp.last_working_date || null,
-                    login_id: editEmp.login_id.trim(),
-                    login_password: editEmp.login_password.trim(),
-                  })
+                  body: JSON.stringify(payload)
                 });
                 if (!res.ok) { setEditError("Failed to update. Try again."); return; }
                 const updated = await res.json();

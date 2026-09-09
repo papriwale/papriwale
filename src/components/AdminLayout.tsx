@@ -1,4 +1,4 @@
-import { Outlet, Link, useLocation, Navigate, useNavigate } from "react-router-dom";
+import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
 import {
   Search, Bell, Settings, User, ShoppingCart, Package, List,
   Users, FileText, Star, AlertTriangle, X, ExternalLink, LayoutDashboard, Printer,
@@ -6,6 +6,7 @@ import {
 import { useState, useEffect, useRef, useCallback } from "react";
 import { apiFetch } from "../lib/apiFetch";
 import { usePrinter } from "../hooks/usePrinter";
+import { useAuthSession } from "../hooks/useAuthSession";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -257,10 +258,10 @@ export default function AdminLayout() {
   }, [searchQuery]);
 
   // ── RBAC helpers ──────────────────────────────────────────────────────────
-  const role        = localStorage.getItem("adminRole") || "";
-  const permissions = JSON.parse(localStorage.getItem("accessPermissions") || "{}") as Record<string, Record<string, string>>;
-  const rolePerms   = permissions[role] || {};
-  const canSee      = (module: string) => role === "Admin" || (rolePerms[module] ?? "Hidden") !== "Hidden";
+  const { session: authSession } = useAuthSession();
+  const role    = authSession?.role || localStorage.getItem("adminRole") || "";
+  const rolePerms = authSession?.permissions || {} as Record<string, string>;
+  const canSee  = (module: string) => role === "Admin" || (rolePerms[module] ?? "Hidden") !== "Hidden";
 
   const goTo = (path: string, requiredModule: string | null) => {
     if (requiredModule && !canSee(requiredModule)) {
@@ -508,8 +509,8 @@ export default function AdminLayout() {
             <div className="relative group">
               <div className="flex items-center gap-2 border-l border-gray-300 pl-4 cursor-pointer">
                 <div className="text-right">
-                  <p className="text-sm font-semibold text-maroon">{localStorage.getItem("adminName") || "Super Admin"}</p>
-                  <p className="text-[10px] text-gray-500 uppercase">{localStorage.getItem("adminRole") || "Admin"}</p>
+                  <p className="text-sm font-semibold text-maroon">{authSession?.name || localStorage.getItem("adminName") || "Super Admin"}</p>
+                  <p className="text-[10px] text-gray-500 uppercase">{role || "Admin"}</p>
                 </div>
                 <div className="w-10 h-10 bg-maroon rounded-full flex items-center justify-center text-gold overflow-hidden">
                   {avatar ? <img src={avatar} alt="Admin" className="w-full h-full object-cover" /> : <User size={20} />}

@@ -36,9 +36,9 @@ export const db: any = {
   ],
   expenses: [],
   employees: [
-    { id: "e1", name: "Ramesh Kumar", designation_tag: "Cashier", phone_number: "9876500001", salary_type_flag: "Monthly", base_compensation_rate: 15000, joining_date: "2024-01-15" },
-    { id: "e2", name: "Suresh Yadav", designation_tag: "Chef", phone_number: "9876500002", salary_type_flag: "Monthly", base_compensation_rate: 18000, joining_date: "2024-02-01" },
-    { id: "e3", name: "Priya Sharma", designation_tag: "Manager", phone_number: "9876500003", salary_type_flag: "Monthly", base_compensation_rate: 25000, joining_date: "2024-01-01" },
+    { id: "e1", name: "Ramesh Kumar", full_name: "Ramesh Kumar", designation_tag: "Cashier", phone_number: "9876500001", salary_type_flag: "Monthly", base_compensation_rate: 15000, joining_date: "2024-01-15", last_working_date: null, avatar: null, login_id: "EMP001", login_password: "" },
+    { id: "e2", name: "Suresh Yadav", full_name: "Suresh Yadav", designation_tag: "Chef", phone_number: "9876500002", salary_type_flag: "Monthly", base_compensation_rate: 18000, joining_date: "2024-02-01", last_working_date: null, avatar: null, login_id: "EMP002", login_password: "" },
+    { id: "e3", name: "Priya Sharma", full_name: "Priya Sharma", designation_tag: "Manager", phone_number: "9876500003", salary_type_flag: "Monthly", base_compensation_rate: 25000, joining_date: "2024-01-01", last_working_date: null, avatar: null, login_id: "EMP003", login_password: "" },
   ],
   attendance: [],
   orders: [],
@@ -109,6 +109,37 @@ export async function bootstrapDb() {
   } catch {
     db.guest_customers = [];
     if (isDev) console.warn("⚠️  Could not load guest_customers from Supabase.");
+  }
+
+  // Bootstrap all primary tables from Supabase so in-memory seed data is never served
+  const tables: Array<{ table: string; key: keyof typeof db }> = [
+    { table: "products",               key: "products" },
+    { table: "product_variants",        key: "product_variants" },
+    { table: "categories",              key: "categories" },
+    { table: "dealers",                 key: "dealers" },
+    { table: "employees",               key: "employees" },
+    { table: "orders",                  key: "orders" },
+    { table: "expenses",                key: "expenses" },
+    { table: "attendance",              key: "attendance" },
+    { table: "inventory_log",           key: "inventory_log" },
+    { table: "raw_material_purchases",  key: "raw_material_purchases" },
+    { table: "reviews",                 key: "reviews" },
+    { table: "gallery",                 key: "gallery" },
+    { table: "banners",                 key: "banners" },
+    { table: "notifications",           key: "notifications" },
+    { table: "employee_sessions",       key: "employee_sessions" },
+    { table: "deleted_bills",           key: "deleted_bills" },
+  ];
+  for (const { table, key } of tables) {
+    try {
+      const { data, error } = await supabase.from(table).select("*");
+      if (!error && Array.isArray(data)) {
+        (db as any)[key] = data;
+        if (isDev) console.log(`✅ Loaded ${data.length} rows from ${table}.`);
+      }
+    } catch {
+      if (isDev) console.warn(`⚠️  Could not load ${table} from Supabase.`);
+    }
   }
 
   try {

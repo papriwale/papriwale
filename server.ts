@@ -52,6 +52,13 @@ async function startServer() {
   // ── Body parsing with size limit ────────────────────────────────────────────
   app.use(express.json({ limit: "5mb" }));
 
+  // Disable ETags and cache for all API responses — prevents 304 stale data
+  app.disable("etag");
+  app.use("/api", (_req, res, next) => {
+    res.setHeader("Cache-Control", "no-store");
+    next();
+  });
+
   // ── Guest profile — registered directly, never blocked by any middleware ────
   // API Routes
   app.use("/api", apiRoutes);

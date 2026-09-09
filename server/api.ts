@@ -159,14 +159,18 @@ router.post("/auth/guest-login", roleAuthMiddleware, async (req, res) => {
     if (error) console.error("[guest-login] Supabase lookup error:", error.message);
 
     if (data) {
-      // Returning customer — sync to memory
+      // Returning customer — mark is_new = false and sync to memory
       customer = data;
+      if (data.is_new) {
+        await supabase.from("guest_customers").update({ is_new: false }).eq("id", data.id);
+        customer = { ...data, is_new: false };
+      }
       const idx = db.guest_customers.findIndex((c: any) => c.id === data.id);
-      if (idx >= 0) db.guest_customers[idx] = data; else db.guest_customers.push(data);
+      if (idx >= 0) db.guest_customers[idx] = customer; else db.guest_customers.push(customer);
     } else {
       // New customer — insert into Supabase
       isNew = true;
-      const newCust = { id: `CUST-${Date.now()}`, name: "Customer", phone, avatar: null, created_at: new Date().toISOString() };
+      const newCust = { id: `CUST-${Date.now()}`, name: "Customer", phone, avatar: null, is_new: true, created_at: new Date().toISOString() };
       const { data: inserted, error: insertErr } = await supabase.from("guest_customers").insert(newCust).select().single();
       if (insertErr) {
         console.error("[guest-login] Insert failed:", insertErr.message);
@@ -185,7 +189,7 @@ router.post("/auth/guest-login", roleAuthMiddleware, async (req, res) => {
     customer = db.guest_customers.find((c: any) => c.phone === phone) || null;
     if (!customer) {
       isNew = true;
-      customer = { id: `CUST-${Date.now()}`, name: "Customer", phone, avatar: null, created_at: new Date().toISOString() };
+      customer = { id: `CUST-${Date.now()}`, name: "Customer", phone, avatar: null, is_new: true, created_at: new Date().toISOString() };
       db.guest_customers.push(customer);
     }
   }
@@ -261,6 +265,7 @@ router.post("/auth/logout", roleAuthMiddleware, async (req, res) => {
 
 // ─── Self-profile endpoint (any authenticated employee) ─────────────────────
 router.get("/auth/me", roleAuthMiddleware, async (req: any, res) => {
+  res.setHeader("Cache-Control", "no-store");
   const token = extractSessionToken(req);
   if (!token) return res.status(401).json({ error: "No token" });
   const session = await getSession(token);
@@ -907,30 +912,49 @@ async function persistOrder(reqBody: any, session?: any) {
 
 // ─── Orders ──────────────────────────────────────────────────────────────────
 router.get("/orders", async (req, res) => {
-  const all = await dbSelect("orders", db.orders);
+  const customer_id    = String(req.query.customer_id    || "");
+  const customer_phone = String(req.query.customer_phone || "");
+  // from/to are IST date strings YYYY-MM-DD sent by the frontend filter
+  const from = String(req.query.from || "");
+  const to   = String(req.query.to   || "");
+  const session = (req as any).session;
+
+  let all: any[];
+  if (supabase) {
+    let q = supabase.from("orders").select("*").order("timestamp", { ascending: false });
+    // Push date filtering to Supabase when a range is provided — avoids row-limit issues
+    if (from) q = (q as any).gte("timestamp", `${from}T00:00:00+05:30`);
+    if (to)   q = (q as any).lte("timestamp", `${to}T23:59:59+05:30`);
+    // For customer-scoped queries without a date range, still cap at 500
+    if (!from && !to) q = (q as any).limit(500);
+    const { data, error } = await q;
+    all = error ? db.orders : (data ?? db.orders);
+  } else {
+    all = db.orders;
+  }
+
   const sorted = all
     .map((order: any) => ({ ...order, grand_total: normalizeBillGrandTotal(order) }))
     .sort((a: any, b: any) => new Date(b.timestamp ?? 0).getTime() - new Date(a.timestamp ?? 0).getTime());
-  const customer_id = String(req.query.customer_id || "");
-  const customer_phone = String(req.query.customer_phone || "");
-  const session = (req as any).session;
 
   if (session?.role === "Customer") {
     const ownCustomerId = String(session.employeeId || "");
-    const filtered = sorted.filter((o: any) => {
+    return res.json(sorted.filter((o: any) => {
       if (ownCustomerId && o.customer_id === ownCustomerId) return true;
       if (customer_phone && o.customer_phone === customer_phone && (!customer_id || customer_id === ownCustomerId)) return true;
       return false;
-    });
-    return res.json(filtered);
+    }));
   }
 
-  const filtered = sorted.filter((o: any) => {
-    if (customer_id && o.customer_id === customer_id) return true;
-    if (customer_phone && o.customer_phone === customer_phone) return true;
-    return false;
-  });
-  res.json(customer_id || customer_phone ? filtered : sorted);
+  if (customer_id || customer_phone) {
+    return res.json(sorted.filter((o: any) => {
+      if (customer_id    && o.customer_id    === customer_id)    return true;
+      if (customer_phone && o.customer_phone === customer_phone) return true;
+      return false;
+    }));
+  }
+
+  res.json(sorted);
 });
 
 router.post("/orders", async (req, res) => {
@@ -1531,6 +1555,7 @@ router.post("/raw-material-purchases", async (req, res) => {
     ...req.body,
     due_date: dueDate,
     is_paid: req.body.is_paid ?? false,
+    amount_paid: req.body.amount_paid ?? 0,
     purchase_date: new Date().toISOString(),
   }, db.raw_material_purchases));
 });
@@ -1750,10 +1775,14 @@ router.get("/analytics", async (_req, res) => {
   const nowIST = new Date(Date.now() + istOffset);
   const today = nowIST.toISOString().split("T")[0]; // YYYY-MM-DD in IST
 
-  const [allOrders, allProducts] = await Promise.all([
-    dbSelect("orders", db.orders),
-    dbSelect("products", db.products),
-  ]);
+  let allOrders: any[];
+  if (supabase) {
+    const { data } = await supabase.from("orders").select("id,order_status,grand_total,timestamp").order("timestamp", { ascending: false }).limit(500);
+    allOrders = data ?? db.orders;
+  } else {
+    allOrders = db.orders;
+  }
+  const allProducts = await dbSelect("products", db.products);
 
   // Match orders whose IST date equals today
   const todayOrders = allOrders.filter((o: any) => {

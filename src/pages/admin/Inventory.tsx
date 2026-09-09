@@ -6,7 +6,7 @@ type Product = { id: string; name: string; category: string; sku: string; curren
 type LogEntry = { id: string; type: "STOCK_IN" | "STOCK_OUT"; product_name: string; qty: number; reason: string; operator: string; timestamp: string; };
 type VariantDraft = { id: string; size_label: string; price: string };
 
-const EMPTY_PRODUCT = { name: "", sku: "", category: "", price: "", current_stock_qty: "", safety_low_threshold: "5", unit: "gm", image: "", description: "", show_in_mobile: true };
+const EMPTY_PRODUCT = { name: "", sku: "", category: "", price: "", unit_purchase_cost: "", current_stock_qty: "", safety_low_threshold: "5", unit: "gm", image: "", description: "", show_in_mobile: true };
 const DECIMAL_UNITS = new Set(["gm", "kg", "g", "gram", "grams", "ltr", "l", "liter", "litre"]);
 
 const normalizeUnit = (unit?: string) => (unit || "pcs").toLowerCase();
@@ -102,6 +102,7 @@ export default function Inventory() {
       sku: p.sku,
       category: p.category,
       price: String(p.price),
+      unit_purchase_cost: String(p.unit_purchase_cost || ""),
       current_stock_qty: String(p.current_stock_qty),
       safety_low_threshold: String(p.safety_low_threshold),
       unit: p.unit || "gm",
@@ -565,6 +566,11 @@ export default function Inventory() {
               <div>
                 <label className="text-xs font-semibold text-gray-600 uppercase">Selling Price (₹)</label>
                 <input type="number" required min="0" step="0.01" value={addForm.price} onChange={e => setAddForm(p => ({ ...p, price: e.target.value }))}
+                  className="w-full border border-gray-300 rounded px-3 py-2 text-sm mt-1 focus:outline-none focus:border-maroon" />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-600 uppercase">Purchase Cost (₹) <span className="text-gray-400 font-normal">(optional)</span></label>
+                <input type="number" min="0" step="0.01" value={(addForm as any).unit_purchase_cost} onChange={e => setAddForm(p => ({ ...p, unit_purchase_cost: e.target.value } as any))}
                   className="w-full border border-gray-300 rounded px-3 py-2 text-sm mt-1 focus:outline-none focus:border-maroon" />
               </div>
               <div>

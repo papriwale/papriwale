@@ -32,7 +32,7 @@ export default function AdminReport() {
     const rows = [
       ["Type", "ID", "Amount", "Status/Category", "Time"],
       ...filteredTodayOrders.map((o: any) => ["Order", o.id, o.grand_total, o.order_status, toBusinessDateString(o.timestamp || o.created_at)]),
-      ...todayExpenses.map((e: any) => ["Expense", e.id, e.amount, e.expense_type, toBusinessDateString(e.expense_date)]),
+      ...todayExpenses.map((e: any) => ["Expense", e.id, e.amount, e.expense_code, toBusinessDateString(e.expense_date)]),
     ];
     const csv = rows.map(r => r.map(String).map(v => `"${v}"`).join(",")).join("\n");
     const blob = new Blob([csv], { type: "text/csv" });

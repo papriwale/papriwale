@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { ChevronDown, ChevronUp, Check, Clock, MessageCircle, EyeOff, Filter, Printer, Trash2, X, ChevronLeft, ChevronRight } from "lucide-react";
 import { useAccess } from "../../hooks/useAccess";
 import { apiFetch } from "../../lib/apiFetch";
-import { getCurrentBusinessDateString, getCurrentBusinessMonthString, isWithinBusinessDateRange, toBusinessDateString, toBusinessMonthString } from "../../lib/businessTime";
+import { getCurrentBusinessDateString, getCurrentBusinessMonthString, toBusinessDateString, isWithinBusinessDateRange } from "../../lib/businessTime";
 import { usePrinter } from "../../hooks/usePrinter";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -198,11 +198,32 @@ export default function AdminOrders() {
     if (result.fallback) printOrder(order);
   };
 
-  const fetchOrders    = () => apiFetch("/api/orders").then(r => r.json()).then(d => setOrders(Array.isArray(d) ? d : []));
+  const fetchOrders = () => {
+    // Build date params so the server filters in Supabase — avoids row-limit issues
+    const params = new URLSearchParams();
+    if (filterMode === "today") {
+      const today = getCurrentBusinessDateString();
+      params.set("from", today);
+      params.set("to", today);
+    } else if (filterMode === "month") {
+      params.set("from", `${filterMonth}-01`);
+      const lastDay = new Date(new Date(`${filterMonth}-01T00:00:00Z`).setUTCMonth(new Date(`${filterMonth}-01T00:00:00Z`).getUTCMonth() + 1) - 1).toISOString().slice(0, 10);
+      params.set("to", lastDay);
+    } else if (filterMode === "custom" && filterFrom && filterTo) {
+      params.set("from", filterFrom);
+      params.set("to", filterTo);
+    }
+    apiFetch(`/api/orders?${params}`).then(r => r.json()).then(d => setOrders(Array.isArray(d) ? d : []));
+  };
   const fetchAnalytics = () => apiFetch("/api/analytics").then(r => r.json()).then(d => { if (d && !d.error) setAnalytics(d); });
   const fetchDeletedBills = () => apiFetch("/api/deleted-bills").then(r => r.json()).then(d => setDeletedBills(Array.isArray(d) ? d : []));
 
-  useEffect(() => { fetchOrders(); fetchAnalytics(); fetchDeletedBills(); }, []);
+  useEffect(() => {
+    fetchOrders(); fetchAnalytics(); fetchDeletedBills();
+    const onStockUpdated = () => { fetchOrders(); fetchAnalytics(); };
+    window.addEventListener("stock-updated", onStockUpdated);
+    return () => window.removeEventListener("stock-updated", onStockUpdated);
+  }, [filterMode, filterMonth, filterFrom, filterTo]);
 
   const handleSetReady = async (orderId: string) => {
     await apiFetch(`/api/orders/${orderId}`, {
@@ -233,16 +254,7 @@ export default function AdminOrders() {
   };
 
   const filteredOrders = orders
-    .filter(o => {
-      if (o.order_status === "In-Preparation") return false;
-      const sourceDate = o.timestamp || (o as any).order_timestamp || (o as any).created_at;
-      const orderDate = toBusinessDateString(sourceDate);
-      if (!orderDate) return false;
-      if (filterMode === "today") return orderDate === getCurrentBusinessDateString();
-      if (filterMode === "month")  return toBusinessMonthString(sourceDate) === filterMonth;
-      if (filterMode === "custom") return Boolean(filterFrom && filterTo) && isWithinBusinessDateRange(sourceDate, filterFrom, filterTo);
-      return false;
-    })
+    .filter(o => o.order_status !== "In-Preparation")
     .sort((a, b) => (b.timestamp ? new Date(b.timestamp).getTime() : 0) - (a.timestamp ? new Date(a.timestamp).getTime() : 0));
 
   const salesPeriodRange = getSalesPeriodRange(salesPeriod, salesPeriodOffset);

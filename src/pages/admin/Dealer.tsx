@@ -62,7 +62,10 @@ export default function DealerExpenses() {
       apiFetch("/api/employees").then(r => r.json()).catch(() => []),
       apiFetch("/api/settings").then(r => r.json()).catch(() => ({})),
     ]).then(([d, e, o, p, rm, emps, settings]) => {
-      setDealers(d); setExpenses(e); setOrders(o); setProducts(p);
+      setDealers(Array.isArray(d) ? d : []);
+      setExpenses(Array.isArray(e) ? e : []);
+      setOrders(Array.isArray(o) ? o : []);
+      setProducts(Array.isArray(p) ? p : []);
       setRawPurchases(Array.isArray(rm) ? rm : []);
       setEmployees(Array.isArray(emps) ? emps : []);
       setCashBalance(Number(settings?.cashBalance || 0));
@@ -103,9 +106,9 @@ export default function DealerExpenses() {
   const filteredOrders = orders.filter(o => inDateRange(o.timestamp));
   const filteredExpenses = expenses.filter(e => inDateRange(e.expense_date));
 
-  const totalPOSInflows = filteredOrders.reduce((s, o) => s + (Number(o.grand_total) || 0), 0);
-  const totalStockValue = products.reduce((s, p) => s + (Number(p.unit_purchase_cost || 0) * Number(p.current_stock_qty || 0)), 0);
-  const totalExpenses = filteredExpenses.reduce((s, e) => s + Number(e.amount), 0);
+  const totalPOSInflows = filteredOrders.filter(o => o.order_status === "Paid").reduce((s, o) => s + (Number(o.grand_total) || 0), 0);
+  const totalStockValue = products.reduce((s, p) => s + (Number(p.unit_purchase_cost || p.price || 0) * Number(p.current_stock_qty || 0)), 0);
+  const totalExpenses = expenses.reduce((s, e) => s + (Number(e.amount) || 0), 0);
   const netIncome = totalPOSInflows - totalExpenses;
   const outstandingPayables = rawPurchases
     .filter((r: any) => !r.is_paid)

@@ -112,13 +112,13 @@ export async function bootstrapDb() {
   }
 
   // Bootstrap all primary tables from Supabase so in-memory seed data is never served
-  const tables: Array<{ table: string; key: keyof typeof db }> = [
+  const tables: Array<{ table: string; key: keyof typeof db; order?: { column: string; ascending: boolean } }> = [
     { table: "products",               key: "products" },
     { table: "product_variants",        key: "product_variants" },
     { table: "categories",              key: "categories" },
     { table: "dealers",                 key: "dealers" },
     { table: "employees",               key: "employees" },
-    { table: "orders",                  key: "orders" },
+    { table: "orders",                  key: "orders", order: { column: "timestamp", ascending: false } },
     { table: "expenses",                key: "expenses" },
     { table: "attendance",              key: "attendance" },
     { table: "inventory_log",           key: "inventory_log" },
@@ -130,9 +130,11 @@ export async function bootstrapDb() {
     { table: "employee_sessions",       key: "employee_sessions" },
     { table: "deleted_bills",           key: "deleted_bills" },
   ];
-  for (const { table, key } of tables) {
+  for (const { table, key, order } of tables) {
     try {
-      const { data, error } = await supabase.from(table).select("*");
+      let q = supabase.from(table).select("*");
+      if (order) q = (q as any).order(order.column, { ascending: order.ascending });
+      const { data, error } = await q;
       if (!error && Array.isArray(data)) {
         (db as any)[key] = data;
         if (isDev) console.log(`✅ Loaded ${data.length} rows from ${table}.`);

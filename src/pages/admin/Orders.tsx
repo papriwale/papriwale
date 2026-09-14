@@ -292,10 +292,18 @@ export default function AdminOrders() {
 
   const totalPrepared = filteredOrders.filter(o => ["Ready to Serve", "Paid"].includes(o.order_status)).length;
 
+  const isCustomOrMonth = filterMode === "custom" || filterMode === "month";
+  const displayOrders  = isCustomOrMonth ? filteredOrders.length : analytics.totalOrders;
+  const displayRevenue = isCustomOrMonth
+    ? filteredOrders.reduce((s, o) => s + Number(o.grand_total || 0), 0)
+    : analytics.totalRevenue;
+
+  const periodLabel = filterMode === "today" ? "Today" : filterMode === "month" ? "Month" : "Range";
+
   const metrics = [
-    { label: "Total Daily Orders", val: String(analytics.totalOrders) },
-    { label: "Gross Revenue",      val: `₹${analytics.totalRevenue.toFixed(0)}` },
-    { label: "Total Prepared",     val: String(totalPrepared) },
+    { label: `Total ${periodLabel} Orders`, val: String(displayOrders) },
+    { label: "Gross Revenue",               val: `₹${displayRevenue.toFixed(0)}` },
+    { label: "Total Prepared",              val: String(totalPrepared) },
   ];
 
   return (

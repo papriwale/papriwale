@@ -159,13 +159,23 @@ function buildReceiptData(params: {
 
   let itemLines = "";
   items.forEach(item => {
-    const isGm = (item.unit || "").toLowerCase() === "gm";
+    const unit = (item.unit || "").toLowerCase();
+    const isGm = unit === "gm";
+    const isKg = unit === "kg";
+    const isWeight = isGm || isKg;
+
     const displayQty = isGm
       ? (item.qty >= 1000 ? `${(item.qty / 1000).toFixed(3)}kg` : `${item.qty}gm`)
-      : String(item.qty);
-    const name = (item.name + (item.size ? ` (${item.size})` : "")).slice(0, 22);
-    const amt = `${(item.price * item.qty).toFixed(2)}`;
-    itemLines += pad(`${name} x${displayQty}`, `Rs.${amt}`) + "\n";
+      : isKg ? `${item.qty}kg`
+      : item.qty === 1 ? `1pc` : `${item.qty}pcs`;
+
+    const unitLabel = isGm ? "gm" : isKg ? "kg" : "pc";
+    const name = item.name + (item.size ? ` (${item.size})` : "");
+    const amt = `Rs.${(item.price * item.qty).toFixed(2)}`;
+    const rateLine = `  Rs.${item.price}/${unitLabel} x ${displayQty}`;
+
+    itemLines += name + "\n";
+    itemLines += pad(rateLine, amt) + "\n";
   });
 
   return [

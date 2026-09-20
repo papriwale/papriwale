@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { ChevronDown, ChevronUp, Check, Clock, MessageCircle, EyeOff, Filter, Printer, Trash2, X, ChevronLeft, ChevronRight } from "lucide-react";
 import { useAccess } from "../../hooks/useAccess";
 import { apiFetch } from "../../lib/apiFetch";
-import { getCurrentBusinessDateString, getCurrentBusinessMonthString, toBusinessDateString, isWithinBusinessDateRange } from "../../lib/businessTime";
+import { toBusinessDateString, isWithinBusinessDateRange } from "../../lib/businessTime";
 import { usePrinter } from "../../hooks/usePrinter";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -36,7 +36,7 @@ interface Order {
 }
 
 type Tab = "orders" | "deleted";
-type FilterMode = "today" | "month" | "custom";
+type FilterMode = "day" | "week" | "month" | "year" | "custom";
 type SalesPeriod = "day" | "week" | "month";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -112,6 +112,51 @@ function getSalesPeriodLabel(period: SalesPeriod, offset: number): string {
   return offset === 0 ? "Current Month" : offset > 0 ? `Month +${offset}` : `${Math.abs(offset)} Month${Math.abs(offset) === 1 ? "" : "s"} Ago`;
 }
 
+function getFilterRange(mode: FilterMode, offset: number, customFrom: string, customTo: string): { start: string; end: string } {
+  if (mode === "custom") return { start: customFrom, end: customTo };
+  const today = toBusinessDateString(new Date()) || new Date().toISOString().slice(0, 10);
+  if (mode === "day") {
+    const d = shiftBusinessDate(today, offset);
+    return { start: d, end: d };
+  }
+  if (mode === "week") {
+    const target = shiftBusinessDate(today, offset * 7);
+    const dow = new Date(`${target}T00:00:00Z`).getUTCDay();
+    const start = shiftBusinessDate(target, dow === 0 ? -6 : 1 - dow);
+    return { start, end: shiftBusinessDate(start, 6) };
+  }
+  if (mode === "month") {
+    const start = shiftBusinessMonth(`${today.slice(0, 7)}-01`, offset);
+    const next = new Date(`${start}T00:00:00Z`);
+    next.setUTCMonth(next.getUTCMonth() + 1); next.setUTCDate(0);
+    return { start, end: next.toISOString().slice(0, 10) };
+  }
+  // year
+  const year = new Date().getUTCFullYear() + offset;
+  return { start: `${year}-01-01`, end: `${year}-12-31` };
+}
+
+function getFilterLabel(mode: FilterMode, offset: number): string {
+  const today = toBusinessDateString(new Date()) || new Date().toISOString().slice(0, 10);
+  if (mode === "day") {
+    if (offset === 0) return "Today";
+    const d = new Date(`${shiftBusinessDate(today, offset)}T00:00:00Z`);
+    return d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+  }
+  if (mode === "week") {
+    const target = shiftBusinessDate(today, offset * 7);
+    const dow = new Date(`${target}T00:00:00Z`).getUTCDay();
+    const start = shiftBusinessDate(target, dow === 0 ? -6 : 1 - dow);
+    const end = shiftBusinessDate(start, 6);
+    return `${new Date(`${start}T00:00:00Z`).toLocaleDateString("en-IN", { day: "numeric", month: "short" })} – ${new Date(`${end}T00:00:00Z`).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}`;
+  }
+  if (mode === "month") {
+    const start = shiftBusinessMonth(`${today.slice(0, 7)}-01`, offset);
+    return new Date(`${start}T00:00:00Z`).toLocaleDateString("en-IN", { month: "long", year: "numeric" });
+  }
+  return String(new Date().getUTCFullYear() + offset);
+}
+
 function printOrder(order: Order) {
   const dash = `<div style="text-align:center;font-size:10px;margin:4px 0">----------------------------------------</div>`;
   const dt   = order.timestamp ? new Date(order.timestamp).toLocaleString() : "—";
@@ -169,11 +214,12 @@ const STATUS_COLOR: Record<string, string> = {
 export default function AdminOrders() {
   const [tab,         setTab]         = useState<Tab>("orders");
   const [orders,      setOrders]      = useState<Order[]>([]);
+  const [allOrders,   setAllOrders]   = useState<Order[]>([]);
   const [deletedBills, setDeletedBills] = useState<any[]>([]);
   const [expanded,    setExpanded]    = useState<string | null>(null);
   const [analytics,   setAnalytics]   = useState({ totalRevenue: 0, totalOrders: 0 });
-  const [filterMode,  setFilterMode]  = useState<FilterMode>("today");
-  const [filterMonth, setFilterMonth] = useState(getCurrentBusinessMonthString());
+  const [filterMode,  setFilterMode]  = useState<FilterMode>("day");
+  const [filterOffset, setFilterOffset] = useState(0);
   const [filterFrom,  setFilterFrom]  = useState("");
   const [filterTo,    setFilterTo]    = useState("");
   const [salesPeriod, setSalesPeriod] = useState<SalesPeriod>("day");
@@ -198,32 +244,31 @@ export default function AdminOrders() {
     if (result.fallback) printOrder(order);
   };
 
-  const fetchOrders = () => {
-    // Build date params so the server filters in Supabase — avoids row-limit issues
+  const fetchOrders = (range: { start: string; end: string }) => {
     const params = new URLSearchParams();
-    if (filterMode === "today") {
-      const today = getCurrentBusinessDateString();
-      params.set("from", today);
-      params.set("to", today);
-    } else if (filterMode === "month") {
-      params.set("from", `${filterMonth}-01`);
-      const lastDay = new Date(new Date(`${filterMonth}-01T00:00:00Z`).setUTCMonth(new Date(`${filterMonth}-01T00:00:00Z`).getUTCMonth() + 1) - 1).toISOString().slice(0, 10);
-      params.set("to", lastDay);
-    } else if (filterMode === "custom" && filterFrom && filterTo) {
-      params.set("from", filterFrom);
-      params.set("to", filterTo);
-    }
+    if (range.start) params.set("from", range.start);
+    if (range.end)   params.set("to",   range.end);
     apiFetch(`/api/orders?${params}`).then(r => r.json()).then(d => setOrders(Array.isArray(d) ? d : []));
+  };
+
+  const fetchAllOrders = (period: SalesPeriod, offset: number) => {
+    const range = getSalesPeriodRange(period, offset);
+    apiFetch(`/api/orders?from=${range.start}&to=${range.end}`).then(r => r.json()).then(d => setAllOrders(Array.isArray(d) ? d : []));
   };
   const fetchAnalytics = () => apiFetch("/api/analytics").then(r => r.json()).then(d => { if (d && !d.error) setAnalytics(d); });
   const fetchDeletedBills = () => apiFetch("/api/deleted-bills").then(r => r.json()).then(d => setDeletedBills(Array.isArray(d) ? d : []));
 
   useEffect(() => {
-    fetchOrders(); fetchAnalytics(); fetchDeletedBills();
-    const onStockUpdated = () => { fetchOrders(); fetchAnalytics(); };
+    const range = getFilterRange(filterMode, filterOffset, filterFrom, filterTo);
+    fetchOrders(range); fetchAnalytics(); fetchDeletedBills();
+    const onStockUpdated = () => { fetchOrders(range); fetchAnalytics(); };
     window.addEventListener("stock-updated", onStockUpdated);
     return () => window.removeEventListener("stock-updated", onStockUpdated);
-  }, [filterMode, filterMonth, filterFrom, filterTo]);
+  }, [filterMode, filterOffset, filterFrom, filterTo]);
+
+  useEffect(() => {
+    fetchAllOrders(salesPeriod, salesPeriodOffset);
+  }, [salesPeriod, salesPeriodOffset]);
 
   const handleSetReady = async (orderId: string) => {
     await apiFetch(`/api/orders/${orderId}`, {
@@ -231,7 +276,7 @@ export default function AdminOrders() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ order_status: "Ready to Serve" }),
     });
-    fetchOrders();
+    fetchOrders(getFilterRange(filterMode, filterOffset, filterFrom, filterTo));
   };
 
   const handleSetPaid = async (orderId: string) => {
@@ -240,7 +285,7 @@ export default function AdminOrders() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ order_status: "Paid" }),
     });
-    fetchOrders();
+    fetchOrders(getFilterRange(filterMode, filterOffset, filterFrom, filterTo));
     fetchAnalytics();
   };
 
@@ -248,7 +293,7 @@ export default function AdminOrders() {
     if (!deleteId) return;
     await apiFetch(`/api/orders/${deleteId}`, { method: "DELETE" });
     setDeleteId(null);
-    fetchOrders();
+    fetchOrders(getFilterRange(filterMode, filterOffset, filterFrom, filterTo));
     fetchAnalytics();
     fetchDeletedBills();
   };
@@ -260,9 +305,9 @@ export default function AdminOrders() {
   const salesPeriodRange = getSalesPeriodRange(salesPeriod, salesPeriodOffset);
   const soldProductMap = new Map<string, { key: string; name: string; size: string; unit: string; qty: number }>();
 
-  orders
+  allOrders
     .filter(order => {
-      if (order.order_status === "In-Preparation") return false;
+      if (!(["Paid", "Ready to Serve"].includes(order.order_status))) return false;
       const orderDate = toBusinessDateString(order.timestamp || (order as any).created_at);
       if (!orderDate) return false;
       return isWithinBusinessDateRange(order.timestamp || (order as any).created_at, salesPeriodRange.start, salesPeriodRange.end);
@@ -292,18 +337,18 @@ export default function AdminOrders() {
 
   const totalPrepared = filteredOrders.filter(o => ["Ready to Serve", "Paid"].includes(o.order_status)).length;
 
-  const isCustomOrMonth = filterMode === "custom" || filterMode === "month";
-  const displayOrders  = isCustomOrMonth ? filteredOrders.length : analytics.totalOrders;
-  const displayRevenue = isCustomOrMonth
-    ? filteredOrders.reduce((s, o) => s + Number(o.grand_total || 0), 0)
-    : analytics.totalRevenue;
+  const isToday = filterMode === "day" && filterOffset === 0;
+  const displayOrders  = isToday ? analytics.totalOrders : filteredOrders.length;
+  const displayRevenue = isToday
+    ? analytics.totalRevenue
+    : filteredOrders.reduce((s, o) => s + Number(o.grand_total || 0), 0);
 
-  const periodLabel = filterMode === "today" ? "Today" : filterMode === "month" ? "Month" : "Range";
+  const periodLabel = filterMode === "custom" ? "Range" : getFilterLabel(filterMode, filterOffset);
 
   const metrics = [
-    { label: `Total ${periodLabel} Orders`, val: String(displayOrders) },
-    { label: "Gross Revenue",               val: `₹${displayRevenue.toFixed(0)}` },
-    { label: "Total Prepared",              val: String(totalPrepared) },
+    { label: "Orders",       val: String(displayOrders) },
+    { label: "Gross Revenue", val: `₹${displayRevenue.toFixed(0)}` },
+    { label: "Prepared",     val: String(totalPrepared) },
   ];
 
   return (
@@ -370,15 +415,33 @@ export default function AdminOrders() {
       <div className="bg-white rounded-lg border border-gray-100 shadow-sm p-3 flex flex-wrap items-center gap-3">
         <Filter size={15} className="text-gray-400" />
         <span className="text-xs font-semibold text-gray-500 uppercase">Filter:</span>
-        {(["today", "month", "custom"] as FilterMode[]).map(m => (
-          <button key={m} onClick={() => setFilterMode(m)}
+        {(["day", "week", "month", "year", "custom"] as FilterMode[]).map(m => (
+          <button key={m} onClick={() => { setFilterMode(m); setFilterOffset(0); }}
             className={`px-3 py-1.5 rounded text-xs font-semibold transition-colors ${filterMode === m ? "bg-maroon text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
-            {m === "today" ? "Today" : m === "month" ? "By Month" : "Custom Range"}
+            {m === "day" ? "Day" : m === "week" ? "Week" : m === "month" ? "Month" : m === "year" ? "Year" : "Custom"}
           </button>
         ))}
-        {filterMode === "month" && (
-          <input type="month" value={filterMonth} onChange={e => setFilterMonth(e.target.value)} className="border border-gray-300 rounded px-2 py-1 text-sm" />
+
+        {filterMode !== "custom" && (
+          <div className="flex items-center gap-1 ml-1">
+            <button onClick={() => setFilterOffset(o => o - 1)}
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded text-xs font-semibold bg-gray-100 text-gray-600 hover:bg-gray-200">
+              <ChevronLeft size={13} /> Prev
+            </button>
+            <span className="px-3 py-1.5 rounded text-xs font-semibold bg-gray-50 border border-gray-200 text-gray-700 min-w-[110px] text-center">
+              {periodLabel}
+            </span>
+            <button onClick={() => setFilterOffset(0)}
+              className="px-2.5 py-1.5 rounded text-xs font-semibold bg-gray-100 text-gray-600 hover:bg-gray-200">
+              Now
+            </button>
+            <button onClick={() => setFilterOffset(o => o + 1)}
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded text-xs font-semibold bg-gray-100 text-gray-600 hover:bg-gray-200">
+              Next <ChevronRight size={13} />
+            </button>
+          </div>
         )}
+
         {filterMode === "custom" && (
           <>
             <input type="date" value={filterFrom} onChange={e => setFilterFrom(e.target.value)} className="border border-gray-300 rounded px-2 py-1 text-sm" />

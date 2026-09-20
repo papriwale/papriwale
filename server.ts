@@ -38,7 +38,7 @@ async function startServer() {
           "frame-ancestors 'none'",
           "form-action 'self'",
           "img-src 'self' data: https:",
-          "font-src 'self' data:",
+          "font-src 'self' data: https://fonts.gstatic.com",
           "style-src 'self' 'unsafe-inline' https:",
           "script-src 'self'",
           "connect-src 'self' https: wss:",

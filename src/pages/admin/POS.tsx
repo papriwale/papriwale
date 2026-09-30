@@ -1000,7 +1000,7 @@ export default function POS() {
             </div>
             <div className="p-5">
               <p className="text-gray-700 text-sm mb-1">Storage is full — kindly needs attention.</p>
-              <p className="text-gray-500 text-xs mb-5">Please contact your administrator to free up space. Press <strong>OK</strong> to dismiss, then click <strong>Place & Print</strong> again to print the bill normally.</p>
+              <p className="text-gray-500 text-xs mb-5">Please contact your administrator to free up space.</p>
               <button onClick={() => {
                 setShowDbFullWarning(false);
                 setCart([]);

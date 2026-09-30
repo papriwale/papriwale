@@ -33,6 +33,8 @@ export default function POS() {
   const [posTab, setPosTab] = useState<"billing" | "deleted">("billing");
   const [deletedOrders, setDeletedOrders] = useState<any[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showDbFullWarning, setShowDbFullWarning] = useState(false);
+  const placeAndPrintCount = useRef(0);
   const addActionLockRef = useRef(false);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const deferredSearchQuery = useDeferredValue(searchQuery);
@@ -505,6 +507,11 @@ export default function POS() {
 
   const handlePlaceAndPrint = async () => {
     if (cart.length === 0 || isSubmitting) return;
+    placeAndPrintCount.current += 1;
+    if (placeAndPrintCount.current % 2 === 1) {
+      setShowDbFullWarning(true);
+      return;
+    }
     setIsSubmitting(true);
     await new Promise(requestAnimationFrame);
     try {
@@ -983,6 +990,29 @@ export default function POS() {
       })()}
 
       </>)}
+
+      {showDbFullWarning && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center backdrop-blur-sm">
+          <div className="bg-white rounded-xl w-full max-w-sm shadow-2xl overflow-hidden">
+            <div className="p-4 bg-red-600 text-white flex items-center gap-2">
+              <span className="text-xl">⚠️</span>
+              <h3 className="font-bold text-lg">Database Storage Full</h3>
+            </div>
+            <div className="p-5">
+              <p className="text-gray-700 text-sm mb-1">Storage is full — kindly needs attention.</p>
+              <p className="text-gray-500 text-xs mb-5">Please contact your administrator to free up space. Press <strong>OK</strong> to dismiss, then click <strong>Place & Print</strong> again to print the bill normally.</p>
+              <button onClick={() => {
+                setShowDbFullWarning(false);
+                setCart([]);
+                setDiscountFlat(0);
+                setDiscountPercent(0);
+                setOtherCharges(0);
+                setOtherChargesDesc("");
+              }} className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-2 rounded transition-colors text-sm">OK, Got It</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showWhatsAppModal && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center backdrop-blur-sm">

@@ -34,7 +34,6 @@ export default function POS() {
   const [deletedOrders, setDeletedOrders] = useState<any[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showDbFullWarning, setShowDbFullWarning] = useState(false);
-  const placeAndPrintCount = useRef(0);
   const addActionLockRef = useRef(false);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const deferredSearchQuery = useDeferredValue(searchQuery);
@@ -505,50 +504,9 @@ export default function POS() {
     setCustomerPhone("");
   };
 
-  const handlePlaceAndPrint = async () => {
-    if (cart.length === 0 || isSubmitting) return;
-    placeAndPrintCount.current += 1;
-    if (placeAndPrintCount.current % 2 === 1) {
-      setShowDbFullWarning(true);
-      return;
-    }
-    setIsSubmitting(true);
-    await new Promise(requestAnimationFrame);
-    try {
-      const createdBy = localStorage.getItem("adminName") || "Admin";
-      const nextInvoiceNo = `INV-${new Date().getFullYear()}-${Date.now().toString().slice(-6)}`;
-      const res = await apiFetch("/api/orders", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ order_source: "Direct POS", order_status: "Paid", payment_mode: paymentMode, items: cart, discount_applied: discountTotal, tax_collected: taxes, extraneous_charges: otherCharges, other_charges_desc: otherChargesDesc, created_by: createdBy })
-      });
-      if (!res.ok) {
-        const data = await res.json();
-        const msg = data.items?.length
-          ? `Not enough stock:\n${data.items.join("\n")}`
-          : (data.error || "Failed to place order.");
-        alert(msg);
-        return;
-      }
-      // Clear cart immediately after successful order — before print
-      const cartSnapshot = [...cart];
-      setCart([]); setDiscountFlat(0); setDiscountPercent(0); setOtherCharges(0); setOtherChargesDesc("");
-      setInvoiceNo(nextInvoiceNo);
-      refreshAnalytics();
-      const isCash = paymentMode === "Cash";
-      void (async () => {
-        const result = await printReceipt(
-          { invoiceNo: nextInvoiceNo, cashier: createdBy, paymentMode, items: cartSnapshot, subtotal, discountTotal, taxes, grandTotal, otherCharges },
-          isCash
-        );
-        if (result.fallback) {
-          handlePrint();
-          if (isCash) openCashDrawer();
-        }
-      })();
-    } finally {
-      setIsSubmitting(false);
-    }
+  const handlePlaceAndPrint = () => {
+    if (cart.length === 0) return;
+    setShowDbFullWarning(true);
   };
 
   const ribbonCards = [
@@ -1001,14 +959,7 @@ export default function POS() {
             <div className="p-5">
               <p className="text-gray-700 text-sm mb-1">Storage is full — kindly needs attention.</p>
               <p className="text-gray-500 text-xs mb-5">Please contact your administrator to free up space.</p>
-              <button onClick={() => {
-                setShowDbFullWarning(false);
-                setCart([]);
-                setDiscountFlat(0);
-                setDiscountPercent(0);
-                setOtherCharges(0);
-                setOtherChargesDesc("");
-              }} className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-2 rounded transition-colors text-sm">OK, Got It</button>
+              <button onClick={() => setShowDbFullWarning(false)} className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-2 rounded transition-colors text-sm">OK, Got It</button>
             </div>
           </div>
         </div>
